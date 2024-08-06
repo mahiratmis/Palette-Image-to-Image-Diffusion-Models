@@ -157,12 +157,12 @@ class LogTracker:
             self._data[col].values[:] = 0
 
     def update(self, key, value, n=1):
-        self._data.total[key] += value * n
-        self._data.counts[key] += n
-        self._data.average[key] = self._data.total[key] / self._data.counts[key]
+        self._data.loc[key, "total"] += value * n
+        self._data.loc[key, "counts"] += n
+        self._data.loc[key, "average"] = self._data.loc[key, "total"] / self._data.loc[key, "counts"]
 
     def avg(self, key):
-        return self._data.average[key]
+        return self._data.loc[key, "average"]
 
     def result(self):
         return {'{}/{}'.format(self.phase, k):v for k, v in dict(self._data.average).items()}
