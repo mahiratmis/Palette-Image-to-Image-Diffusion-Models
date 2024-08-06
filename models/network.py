@@ -68,6 +68,7 @@ class Network(BaseNetwork):
 
         model_mean, posterior_log_variance = self.q_posterior(
             y_0_hat=y_0_hat, y_t=y_t, t=t)
+        del y_0_hat
         return model_mean, posterior_log_variance
 
     def q_sample(self, y_0, sample_gammas, noise=None):
@@ -82,7 +83,11 @@ class Network(BaseNetwork):
         model_mean, model_log_variance = self.p_mean_variance(
             y_t=y_t, t=t, clip_denoised=clip_denoised, y_cond=y_cond)
         noise = torch.randn_like(y_t) if any(t>0) else torch.zeros_like(y_t)
-        return model_mean + noise * (0.5 * model_log_variance).exp()
+        result = model_mean + noise * (0.5 * model_log_variance).exp()
+        del noise
+        del model_mean
+        torch.cuda.empty_cache()
+        return result
 
     @torch.no_grad()
     def restoration(self, y_cond, y_t=None, y_0=None, mask=None, sample_num=8):
@@ -92,14 +97,17 @@ class Network(BaseNetwork):
         sample_inter = (self.num_timesteps//sample_num)
         
         y_t = default(y_t, lambda: torch.randn_like(y_cond))
-        ret_arr = y_t
+        ret_arr = None
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+            print(i, flush=True)
             t = torch.full((b,), i, device=y_cond.device, dtype=torch.long)
             y_t = self.p_sample(y_t, t, y_cond=y_cond)
             if mask is not None:
                 y_t = y_0*(1.-mask) + mask*y_t
             if i % sample_inter == 0:
                 ret_arr = torch.cat([ret_arr, y_t], dim=0)
+                # pass
+            del t
         return y_t, ret_arr
 
     def forward(self, y_0, y_cond=None, mask=None, noise=None):

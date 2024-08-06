@@ -10,7 +10,7 @@
         "tb_logger": "tb_logger", // path of tensorboard logger
         "results": "results",
         "checkpoint": "checkpoint",
-        "resume_state": "experiments/train_diffusion_sid_240806_1754356/checkpoint/2" 
+        "resume_state": "experiments/train_diffusion_sid_240806_235727/checkpoint/2" 
         // "resume_state": null // ex: 100, loading .state  and .pth from given epoch and iteration
     },
 
@@ -19,24 +19,24 @@
             "which_dataset": {  // import designated dataset using arguments 
                 "name": ["data.DarkSetLite", "DarkData"], // import Dataset() class / function(not recommend) from data.dataset.py (default is [data.dataset.py])
                 "args":{ // arguments to initialize dataset
-                    "patch_size": 256,
+                    "patch_size": 512,
                     "type": "train",
                     "data_root": "../datasets/Sony/",
-                    "first_n": 4
+                    "first_n": 16
                 } 
             },
             "dataloader":{
                 "validation_split": 0, // percent or number 
                 "args":{ // arguments to initialize train_dataloader
-                    "batch_size": 1, // batch size in each gpu
-                    "num_workers": 1,
+                    "batch_size": 2, // batch size in each gpu
+                    "num_workers": 4,
                     "shuffle": true,
                     "pin_memory": true,
                     "drop_last": false
                 },
                 "val_args":{ // arguments to initialize valid_dataloader, will overwrite the parameters in train_dataloader
                     "batch_size": 1, // batch size in each gpu
-                    "num_workers": 4,
+                    "num_workers": 1,
                     "shuffle": false,
                     "pin_memory": true,
                     "drop_last": false
@@ -50,13 +50,13 @@
                     "patch_size": 512,
                     "type": "test",
                     "data_root": "../datasets/Sony/",
-                    "first_n": 4
+                    "first_n": 16
                 }
             },
             "dataloader":{
                 "args":{
                     "batch_size": 1,
-                    "num_workers": 2,
+                    "num_workers": 1,
                     "pin_memory": true
                 }
             }
@@ -100,7 +100,7 @@
                             16
                             // 8
                         ],
-                        "num_head_channels": 32,
+                        "num_head_channels": 0, //32,
                         "res_blocks": 2,
                         "dropout": 0.2,
                         "image_size": 512
@@ -133,10 +133,10 @@
 
     "train": { // arguments for basic training
         "n_epoch": 1e8, // max epochs, not limited now
-        "n_iter": 6, // max interations
+        "n_iter": 16, // max interations
         "val_epoch": 2, // valdation every specified number of epochs
         "save_checkpoint_epoch": 2,
-        "log_iter": 1e4, // log every specified number of iterations
+        "log_iter": 8, //1e4, // log every specified number of iterations
         "tensorboard" : true // tensorboardX enable
     },
     

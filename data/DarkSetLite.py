@@ -239,6 +239,8 @@ class DarkData(Dataset):
         input_patches = self.numpy_to_torch(input_patches)        
         gt_patch = self.numpy_to_torch(gt_patch)        
         gt_patch = np.squeeze(gt_patch, axis=0)
+        input_patches = input_patches * 2 - 1
+        gt_patch = gt_patch * 2 - 1
         # print("input_patches.shape", input_patches.shape) # [8, 4, 128, 128]
         # print("gt_patch.shape", gt_patch.shape)           # [3, 256, 256]
         # print("train_id", train_id)
