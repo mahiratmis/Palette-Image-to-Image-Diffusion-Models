@@ -8,6 +8,37 @@ from torch.utils.data import DataLoader, Subset
 import core.util as Util
 from core.praser import init_obj
 
+class MultiEpochsDataLoader(DataLoader):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._DataLoader__initialized = False
+        self.batch_sampler = _RepeatSampler(self.batch_sampler)
+        self._DataLoader__initialized = True
+        self.iterator = super().__iter__()
+
+    def __len__(self):
+        return len(self.batch_sampler.sampler)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield next(self.iterator)
+
+
+class _RepeatSampler(object):
+    """ Sampler that repeats forever.
+
+    Args:
+        sampler (Sampler)
+    """
+
+    def __init__(self, sampler):
+        self.sampler = sampler
+
+    def __iter__(self):
+        while True:
+            yield from iter(self.sampler)
+
 
 def define_dataloader(logger, opt):
     """ create train/test dataloader and validation dataloader,  validation dataloader is None when phase is test or not GPU 0 """
@@ -24,11 +55,11 @@ def define_dataloader(logger, opt):
         dataloader_args.update({'shuffle':False}) # sampler option is mutually exclusive with shuffle 
     
     ''' create dataloader and validation dataloader '''
-    dataloader = DataLoader(phase_dataset, sampler=data_sampler, worker_init_fn=worker_init_fn, **dataloader_args)
+    dataloader = MultiEpochsDataLoader(phase_dataset, sampler=data_sampler, worker_init_fn=worker_init_fn, **dataloader_args)
     ''' val_dataloader don't use DistributedSampler to run only GPU 0! '''
     if opt['global_rank']==0 and val_dataset is not None:
         dataloader_args.update(opt['datasets'][opt['phase']]['dataloader'].get('val_args',{}))
-        val_dataloader = DataLoader(val_dataset, worker_init_fn=worker_init_fn, **dataloader_args) 
+        val_dataloader = MultiEpochsDataLoader(val_dataset, worker_init_fn=worker_init_fn, **dataloader_args) 
     else:
         val_dataloader = None
     return dataloader, val_dataloader

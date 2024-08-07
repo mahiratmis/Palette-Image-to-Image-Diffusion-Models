@@ -11,7 +11,7 @@ from tqdm import tqdm
 from torch import nn
 
 class DarkData(Dataset):
-    def __init__(self, patch_size=512, type="train", data_root='dataset/Sony/', pick_random=True, compress=True, first_n=None):
+    def __init__(self, patch_size=512, type="train", data_root='dataset/Sony/', pick_random=True, compress=True, first_n=1):
         self.patch_size   = patch_size                  # patch size for training
         self.type_code    = '0'                         # type of the dataset to be loaded. (0:train, 1:test, 2:validation)
         self.data_root    = data_root                   # dataset root
@@ -97,7 +97,8 @@ class DarkData(Dataset):
 
         t0 = time.time()
         n_gt = len(train_fns)
-        self.Y = np.zeros((n_gt, 1, 2848, 4256, 3), dtype=np.float32)
+        H, W = 2848//2, 4256//2
+        self.Y = np.zeros((n_gt, 1, H, W, 3), dtype=np.float32)
         self.file_counts = np.zeros((n_gt), dtype=np.uint8)
         self.gt_exposures = np.zeros((n_gt), dtype=np.float16)
         self.in_exposures = []
@@ -109,7 +110,13 @@ class DarkData(Dataset):
             gt_files = glob.glob(self.gt_dir + '%05d_00*.ARW.npz' % train_id)
             # get the first and the only image path for given train_id 
             gt_path = gt_files[0]
-            self.Y[idx] = np.load(gt_path)["data"]
+            gt_img = np.load(gt_path)["data"]
+            # resize down to input dimensions for UNET
+            gt_img = torch.from_numpy(gt_img)
+            # first to bchw then back to bhwc
+            gt_img = nn.functional.interpolate(gt_img.permute(0,3,1,2), size=(H, W), mode='bilinear', align_corners=True).permute(0,2,3,1)
+            gt_img = gt_img.numpy() * 2 - 1              
+            self.Y[idx] = gt_img            
             self.gt_paths.append(gt_path)                      
             # remove the path and get the file names only
             gt_fn = os.path.basename(gt_path)          
@@ -202,13 +209,7 @@ class DarkData(Dataset):
             input_patches = input_images
             input_patches = np.minimum(input_patches, 1.0)     
             input_patches = np.squeeze(input_patches, axis=1)   # 8, 1424, 2128, 4                 
-            gt_patch = gt_image
-            # resize down to input dimensions for UNET
-            _, _, H, W , _ = input_images.shape 
-            gt_patch = torch.from_numpy(gt_patch)
-            # first to bchw then back to bhwc
-            gt_patch = nn.functional.interpolate(gt_patch.permute(0,3,1,2), size=(H, W), mode='bilinear', align_corners=True).permute(0,2,3,1)
-            gt_patch = gt_patch.numpy()            
+            gt_patch = gt_image         
             xx = 0
             yy = 0
         # 0:train
@@ -239,8 +240,9 @@ class DarkData(Dataset):
         input_patches = self.numpy_to_torch(input_patches)        
         gt_patch = self.numpy_to_torch(gt_patch)        
         gt_patch = np.squeeze(gt_patch, axis=0)
+        # normalize data
         input_patches = input_patches * 2 - 1
-        gt_patch = gt_patch * 2 - 1
+        # gt_patch = gt_patch * 2 - 1
         # print("input_patches.shape", input_patches.shape) # [8, 4, 128, 128]
         # print("gt_patch.shape", gt_patch.shape)           # [3, 256, 256]
         # print("train_id", train_id)
@@ -363,14 +365,14 @@ class DarkData(Dataset):
             
         return np.array(shifted_images)
 
-    def crop_samples(self, input_images, gt_image, ps=256, raw_ratio=2):
-        _, _, H, W, _ = input_images.shape  # 8, 4, H, W
+    def crop_samples(self, input_images, gt_image, ps=256, raw_ratio=1):
+        _, _, H, W, _ = input_images.shape  # 8, 1, H, W, 4
         xx = np.random.randint(0, W - ps)
         yy = np.random.randint(0, H - ps)
         input_patches = input_images[:, :, yy:yy + ps, xx:xx + ps, :]
-        gt_patch = gt_image[:, yy*raw_ratio:yy*raw_ratio +ps*raw_ratio, xx*raw_ratio:xx*raw_ratio +ps*raw_ratio, :]
+        gt_patch = gt_image[:,  yy:yy + ps, xx:xx + ps, :]
         # resize from 512,512 to 256, 256 for UNET
-        gt_patch = torch.from_numpy(gt_patch)
-        gt_patch = nn.functional.interpolate(gt_patch.permute(0,3,1,2), size=(ps, ps), mode='bilinear', align_corners=True).permute(0,2,3,1)
-        gt_patch = gt_patch.numpy()
+        # gt_patch = torch.from_numpy(gt_patch)
+        # gt_patch = nn.functional.interpolate(gt_patch.permute(0,3,1,2), size=(ps, ps), mode='bilinear', align_corners=True).permute(0,2,3,1)
+        # gt_patch = gt_patch.numpy()
         return input_patches, gt_patch, xx, yy
