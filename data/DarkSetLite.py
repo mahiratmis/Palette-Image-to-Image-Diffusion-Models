@@ -11,7 +11,7 @@ from tqdm import tqdm
 from torch import nn
 
 class DarkData(Dataset):
-    def __init__(self, patch_size=512, type="train", data_root='dataset/Sony/', pick_random=True, compress=True, first_n=1):
+    def __init__(self, patch_size=512, type="train", data_root='dataset/Sony/', pick_random=True, compress=True, first_n=None):
         self.patch_size   = patch_size                  # patch size for training
         self.type_code    = '0'                         # type of the dataset to be loaded. (0:train, 1:test, 2:validation)
         self.data_root    = data_root                   # dataset root

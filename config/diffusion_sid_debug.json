@@ -1,6 +1,6 @@
 {
     "name": "diffusion_sid", // experiments name
-    "gpu_ids": [1], // gpu ids list, default is single 0
+    "gpu_ids": [0, 1], // gpu ids list, default is single 0
     "seed" : -1, // random seed, seed <0 represents randomization not used 
     "finetune_norm": false, // find the parameters to optimize
 
@@ -10,7 +10,7 @@
         "tb_logger": "tb_logger", // path of tensorboard logger
         "results": "results",
         "checkpoint": "checkpoint",
-        // "resume_state": "experiments/train_diffusion_sid_240806_235727/checkpoint/2" 
+        // "resume_state": "experiments/train_diffusion_sid_240807_013055/checkpoint/1" 
         "resume_state": null // ex: 100, loading .state  and .pth from given epoch and iteration
     },
 
@@ -132,10 +132,10 @@
 
     "train": { // arguments for basic training
         "n_epoch": 1e8, // max epochs, not limited now
-        "n_iter": 2e6, // max interations
+        "n_iter": 8, // max interations
         "val_epoch": 1e6, // validation every specified number of epochs
-        "save_checkpoint_epoch": 1e4,
-        "log_iter": 1e4, // log every specified number of iterations
+        "save_checkpoint_epoch": 1,
+        "log_iter": 2, // log every specified number of iterations
         "tensorboard" : true // tensorboardX enable
     },
     
