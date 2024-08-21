@@ -43,12 +43,24 @@ class Network(BaseNetwork):
         self.register_buffer('posterior_log_variance_clipped', to_torch(np.log(np.maximum(posterior_variance, 1e-20))))
         self.register_buffer('posterior_mean_coef1', to_torch(betas * np.sqrt(gammas_prev) / (1. - gammas)))
         self.register_buffer('posterior_mean_coef2', to_torch((1. - gammas_prev) * np.sqrt(alphas) / (1. - gammas)))
+        
+        # from ddpm official implementation
+        weights = gammas / (1 - gammas)
+        self.register_buffer('weights', to_torch(weights))
 
     def predict_start_from_noise(self, y_t, t, noise):
         return (
             extract(self.sqrt_recip_gammas, t, y_t.shape) * y_t -
             extract(self.sqrt_recipm1_gammas, t, y_t.shape) * noise
         )
+
+
+    def predict_noise_from_start(self, y_t, t, y0):
+        return (
+            (extract(self.sqrt_recip_gammas, t, y_t.shape) * y_t - y0) / \
+            extract(self.sqrt_recipm1_gammas, t, y_t.shape)
+        )
+
 
     def q_posterior(self, y_0_hat, y_t, t):
         posterior_mean = (
@@ -90,7 +102,7 @@ class Network(BaseNetwork):
         return result
 
     @torch.no_grad()
-    def restoration(self, y_cond, y_t=None, y_0=None, mask=None, sample_num=8):
+    def restoration(self, y_cond, y_t=None, y_0=None, mask=None, sample_num=8, preori=True):
         b, *_ = y_cond.shape
 
         assert self.num_timesteps > sample_num, 'num_timesteps must greater than sample_num'
@@ -101,16 +113,37 @@ class Network(BaseNetwork):
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
             # print(i, flush=True)
             t = torch.full((b,), i, device=y_cond.device, dtype=torch.long)
-            y_t = self.p_sample(y_t, t, y_cond=y_cond)
-            if mask is not None:
-                y_t = y_0*(1.-mask) + mask*y_t
-            if i % sample_inter == 0:
-                ret_arr = torch.cat([ret_arr, y_t], dim=0)
-                # pass
-            del t
+            if not preori:
+                y_t = self.p_sample(y_t, t, y_cond=y_cond)
+                if mask is not None:
+                    y_t = y_0*(1.-mask) + mask*y_t
+                if i % sample_inter == 0:
+                    ret_arr = torch.cat([ret_arr, y_t], dim=0)
+                    # pass
+                del t
+            else:                
+                gamma_t1 = extract(self.gammas, t-1, x_shape=(1, 1))
+                sqrt_gamma_t2 = extract(self.gammas, t, x_shape=(1, 1))
+                sample_gammas = (sqrt_gamma_t2-gamma_t1) * torch.rand((b, 1), device=y_0.device) + gamma_t1
+                sample_gammas = sample_gammas.view(b, -1)
+                if i > 0:
+                    y_t = self.denoise_fn(torch.cat([y_t, y_cond], dim=1), sample_gammas)
+                else:
+                    ori = self.denoise_fn(torch.cat([y_t, y_cond], dim=1), sample_gammas)
+                    eps = y_t - extract(self.sqrt_gammas, t, ori.shape) * ori
+                    eps = eps / extract(self.sqrt_one_minus_gammas, t, eps.shape)
+                    y_t = extract(self.sqrt_gammas, t - 1, ori.shape) * ori + extract(self.sqrt_one_minus_gammas, t - 1, eps.shape) * eps                    
+                if i % sample_inter == 0:
+                    ret_arr = torch.cat([ret_arr, y_t], dim=0)                 
+                
         return y_t, ret_arr
 
-    def forward(self, y_0, y_cond=None, mask=None, noise=None):
+    def forward(self, y_0, y_cond=None, mask=None, noise=None, preori=True):
+        # y_0 is the ground truth image
+        # y_cond is the noisy image
+        # mask is the mask image
+        # noise is the noise to add to y_0
+        
         # sampling from p(gammas)
         b, *_ = y_0.shape
         t = torch.randint(1, self.num_timesteps, (b,), device=y_0.device).long()
@@ -127,9 +160,14 @@ class Network(BaseNetwork):
             noise_hat = self.denoise_fn(torch.cat([y_cond, y_noisy*mask+(1.-mask)*y_0], dim=1), sample_gammas)
             loss = self.loss_fn(mask*noise, mask*noise_hat)
         else:
-            noise_hat = self.denoise_fn(torch.cat([y_cond, y_noisy], dim=1), sample_gammas)
-            loss = self.loss_fn(noise, noise_hat)
-        return loss
+            if preori:
+                y0_hat = self.denoise_fn(torch.cat([y_cond, y_noisy], dim=1), sample_gammas)
+                loss = self.loss_fn(y_0, y0_hat)
+                return y0_hat, loss
+            else:
+                noise_hat = self.denoise_fn(torch.cat([y_cond, y_noisy], dim=1), sample_gammas)
+                loss = self.loss_fn(noise, noise_hat)
+                return noise_hat, loss
 
 
 # gaussian diffusion trainer class

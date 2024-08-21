@@ -115,6 +115,7 @@ class DarkData(Dataset):
             gt_img = torch.from_numpy(gt_img)
             # first to bchw then back to bhwc
             gt_img = nn.functional.interpolate(gt_img.permute(0,3,1,2), size=(H, W), mode='bilinear', align_corners=True).permute(0,2,3,1)
+            # normalize data using z-score normalization with mean and std of 0.5
             gt_img = gt_img.numpy() * 2 - 1              
             self.Y[idx] = gt_img            
             self.gt_paths.append(gt_path)                      
@@ -207,9 +208,11 @@ class DarkData(Dataset):
             # print(f"input_images.shape {input_images.shape}")   # 8, 1, 1424, 2128, 4     
             # print(f"gt_image.shape {gt_image.shape}")    # 1, 2848, 4256, 3
             input_patches = input_images
-            input_patches = np.minimum(input_patches, 1.0)     
-            input_patches = np.squeeze(input_patches, axis=1)   # 8, 1424, 2128, 4                 
-            gt_patch = gt_image         
+            input_patches = np.minimum(input_patches, 1.0)              
+            gt_patch = gt_image 
+            input_patches, gt_patch,xx, yy = self.crop_samples(input_images, gt_image, self.patch_size)
+            print("input_patches.shape", input_patches.shape)
+            print("gt_patch.shape", gt_patch.shape)
             xx = 0
             yy = 0
         # 0:train
@@ -232,16 +235,19 @@ class DarkData(Dataset):
             # input_patches = self.shift_samples(input_patches,max_err=8)            
             
             # a = time.time()
-            input_patches = np.squeeze(input_patches, axis=1)
             input_patches = np.minimum(input_patches, 1.0)
             # print(f"minimum patches {time.time()-a}")
             
-
+        input_patches = np.squeeze(input_patches, axis=1)   # 8, 1424, 2128, 4  
         input_patches = self.numpy_to_torch(input_patches)        
         gt_patch = self.numpy_to_torch(gt_patch)        
         gt_patch = np.squeeze(gt_patch, axis=0)
-        # normalize data
+        # normalize data using z-score normalization with mean and std of 0.5
         input_patches = input_patches * 2 - 1
+        
+        # print("gt_patch max", gt_patch.max(), "gt_patch min", gt_patch.min())
+        # print("input_patches max", input_patches.max(), "input_patches min", input_patches.min())
+                
         # gt_patch = gt_patch * 2 - 1
         # print("input_patches.shape", input_patches.shape) # [8, 4, 128, 128]
         # print("gt_patch.shape", gt_patch.shape)           # [3, 256, 256]

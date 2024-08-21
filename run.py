@@ -73,6 +73,7 @@ if __name__ == '__main__':
 
     ''' parser configs '''
     args = parser.parse_args()
+    # create directories for the experiment and backup the configuration
     opt = Praser.parse(args)
     
     ''' cuda devices '''

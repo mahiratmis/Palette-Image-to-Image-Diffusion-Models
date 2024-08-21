@@ -37,7 +37,7 @@ class Palette(BaseModel):
             self.netG_EMA = self.set_device(self.netG_EMA, distributed=self.opt['distributed'])
         self.load_networks()
 
-        self.optG = torch.optim.Adam(list(filter(lambda p: p.requires_grad, self.netG.parameters())), **optimizers[0])
+        self.optG = torch.optim.AdamW(list(filter(lambda p: p.requires_grad, self.netG.parameters())), **optimizers[0])
         self.optimizers.append(self.optG)
         self.resume_training() 
 
@@ -65,10 +65,26 @@ class Palette(BaseModel):
         self.path = data['path']
         self.batch_size = len(data['path'])
     
+    def get_current_visuals_01(self, phase='train'):
+        dict = {
+            'gt_image': self.gt_image.detach()[:].float().cpu(),
+            # 'cond_image': (self.cond_image.detach()[:].float().cpu()+1)/2,
+        }
+        if self.task in ['inpainting','uncropping']:
+            dict.update({
+                'mask': self.mask.detach()[:].float().cpu(),
+                'mask_image': self.mask_image,
+            })
+        if phase != 'train':
+            dict.update({
+                'output': self.output.detach()[:].float().cpu()
+            })
+        return dict
+    
     def get_current_visuals(self, phase='train'):
         dict = {
             'gt_image': (self.gt_image.detach()[:].float().cpu()+1)/2,
-            # 'cond_image': (self.cond_image.detach()[:].float().cpu()+1)/2,
+            'pred_image': (self.pred_image.detach()[:].float().cpu()+1)/2,
         }
         if self.task in ['inpainting','uncropping']:
             dict.update({
@@ -106,8 +122,10 @@ class Palette(BaseModel):
         self.train_metrics.reset()
         for train_data in tqdm.tqdm(self.phase_loader):
             self.set_input(train_data)
+            # print("self.cond_image.min(): ", self.cond_image.min(), "self.cond_image.max(): ", self.cond_image.max())
+            # print("self.gt_image.min(): ", self.gt_image.min(), "self.gt_image.max(): ", self.gt_image.max())
             self.optG.zero_grad()
-            loss = self.netG(self.gt_image, self.cond_image, mask=self.mask)
+            self.pred_image, loss = self.netG(self.gt_image, self.cond_image, mask=self.mask)
             loss.backward()
             self.optG.step()
 
@@ -122,6 +140,7 @@ class Palette(BaseModel):
                     self.writer.add_images(key, value)
             if self.ema_scheduler is not None:
                 if self.iter > self.ema_scheduler['ema_start'] and self.iter % self.ema_scheduler['ema_iter'] == 0:
+                    # self.logger.info('Updating EMA model...')
                     self.EMA.update_model_average(self.netG_EMA, self.netG)
 
         for scheduler in self.schedulers:
@@ -172,7 +191,8 @@ class Palette(BaseModel):
                         self.output, self.visuals = self.netG.module.restoration(self.cond_image, y_t=self.cond_image, 
                             y_0=self.gt_image, mask=self.mask, sample_num=self.sample_num)
                     else:
-                        self.output, self.visuals = self.netG.module.restoration(self.cond_image, sample_num=self.sample_num)
+                        y_t = torch.randn_like(self.gt_image)
+                        self.output, self.visuals = self.netG.module.restoration(self.cond_image, y_t, sample_num=self.sample_num)
                 else:
                     if self.task in ['inpainting','uncropping']:
                         self.output, self.visuals = self.netG.restoration(self.cond_image, y_t=self.cond_image, 
